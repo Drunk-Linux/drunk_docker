@@ -1,0 +1,85 @@
+name: DrunkOS docker image
+
+on:
+    schedule:
+        - cron: '0 0 * * *'
+    workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+    - name: Clean up workflow env
+      run: |
+        # Free up space ( for this workflow )
+        #sudo apt purge -yq $(dpkg -l | grep '^ii' | awk '{ print $2 }' | grep -P '(cabal-|dotnet-|ghc-|libmono|php)') \
+        #liblldb-6.0 libllvm6.0:amd64 mono-runtime-common monodoc-manual powershell ruby
+        
+        #sudo apt autoremove -yq
+        #sudo rm -rf /opt/hostedtoolcache /usr/local /usr/share/dotnet /usr/share/swift
+        
+    - name: prepare build env
+      run: |
+        # Basics
+        mkdir -p ~/DRUNK/{docker}
+        cd ~/DRUNK
+        git clone https://git.it-kuny.ch/drunk/setup.git setup --depth=10
+        
+    - name: Setup bootstrap environment
+      run: |
+        cd ~/DRUNK
+        export P_ROOT=$(pwd)
+        
+        # Pull drunk docker image and make new container of it
+        sudo docker pull hilledkinged/drunk:latest
+        docker container create \
+        --name work01 \
+        --volume $P_ROOT:/home/developer/DRUNK \
+        --tty \
+        --privileged \
+        --device=/dev/loop-control:/dev/loop-control \
+        --device=/var/run/docker.sock:/var/run/docker.sock \
+        --device=/dev/loop0:/dev/loop0 \
+        hilledkinged/drunk /bin/bash
+        
+        sleep 1
+        sudo docker start work01 >/dev/null
+        sleep 1
+        
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "rm -rf /var/lib/bottle/sync/*"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "useradd developer -m -g wheel"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "bash -c /home/developer/DRUNK/setup/docker/developer.sh"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "cp -f /home/developer/DRUNK/setup/docker/bottle.conf /etc/bottle.conf"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "bottle -Syu --needed --noconfirm --disable-download-timeout"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "bash -c /home/developer/DRUNK/setup/docker/developer.sh"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "bottle --needed --noconfirm --disable-download-timeout -Sy docker drunk-install-scripts sudo nano mpfr mpc base-devel m4 git libisoburn dialog syslinux drunk-install-scripts"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "bash -c /home/developer/DRUNK/setup/docker/fix_sudo.sh"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "bash -c /home/developer/DRUNK/setup/docker/locale.sh"
+        
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 /bin/bash -c "chown -R developer /home/developer/DRUNK"
+
+    - name: Pull and install fresh rootfs
+      run: |
+        # Lets make minimal env with only attr for faster testing times
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 su developer -c "cd ~/DRUNK && sudo mkdir -p rootfs"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 su developer -c "cd ~/DRUNK && sudo bottle-strap rootfs base-chroot"
+      
+    - name: Remove old DrunkOS container + image
+      run: |
+        docker rmi hilledkinged/drunk -f
+      
+    - name: Tarball and push new image/container
+      run: |
+        cd ~/DRUNK && sudo tar -C rootfs -c . | sudo docker import - hilledkinged/drunk
+      
+    - name: Login to docker.io
+      uses: docker/login-action@v1
+      with:
+        username: hilledkinged
+        password: ${{ secrets.DOCKER_TOKEN }}
+        
+    - name: Push docker image
+      run: |
+        docker image push hilledkinged/drunk:latest
