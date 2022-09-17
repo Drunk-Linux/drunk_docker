@@ -64,7 +64,7 @@ jobs:
       run: |
         # Lets make minimal env with only attr for faster testing times
         sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 su developer -c "cd ~/DRUNK && sudo mkdir -p rootfs"
-        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 su developer -c "cd ~/DRUNK && sudo bottle-strap rootfs base-chroot"
+        sudo docker exec --tty -e PATH=/bin:/sbin:/usr/bin:/usr/sbin work01 su developer -c "cd ~/DRUNK && sudo bottle-strap rootfs base-chroot linux"
       
     - name: Remove old DrunkOS container + image
       run: |
