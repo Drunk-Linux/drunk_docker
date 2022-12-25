@@ -25,7 +25,7 @@ jobs:
         # Basics
         mkdir -p ~/DRUNK/{docker}
         cd ~/DRUNK
-        git clone https://git.it-kuny.ch/drunk/tools.git tools --depth=10
+        git clone https://git.martinvlba.eu/DrunkOS/tools.git tools
         
     - name: Setup bootstrap environment
       run: |
